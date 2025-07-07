@@ -22,7 +22,7 @@ tracing = { version = "0.1", default-features = false, optional = true }
 tokio = { version = "1", features = ["full"], default-features = false }
 tokio-rustls = { version = "0.26", features = ["aws-lc-rs"], default-features = false }
 rustls-pemfile = { version = "2", default-features = false }
-rcgen = { version = "0.13", features = ["crypto", "aws_lc_rs"], default-features = false }
+rcgen = { version = "0.14", features = ["crypto", "aws_lc_rs"], default-features = false }
 hyper = { version = "1.6", features = ["server", "http2"], default-features = false }
 hyper-util = { version = "0.1", features = ["tokio"], default-features = false }
 http-body-util = { version = "0.1", default-features = false }
