@@ -27,7 +27,7 @@ hyper = { version = "1.6", features = ["server", "http2"], default-features = fa
 hyper-util = { version = "0.1", features = ["tokio"], default-features = false }
 http-body-util = { version = "0.1", default-features = false }
 curl = { version = "0.4", features = ["ssl", "http2"], default-features = false }
-criterion = { version = "0.6", features = ["async_tokio"], default-features = false }
+criterion = { version = "0.7", features = ["async_tokio"], default-features = false }
 
 [[bench]]
 name = "throughput"
