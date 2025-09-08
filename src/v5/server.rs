@@ -61,9 +61,18 @@ impl Server {
                         }
                     };
 
+                    let local_addr = match inner.local_addr() {
+                        Ok(addr) => addr,
+                        Err(_err) => {
+                            #[cfg(feature = "tracing")]
+                            tracing::error!("Failed to get local address for connection {}: {}", addr, _err);
+                            continue;
+                        }
+                    };
+
                     let config = config.clone();
                     tokio::spawn(async move {
-                        let mut stream = Stream::with(inner, addr);
+                        let mut stream = Stream::with(inner, addr, local_addr);
 
                         if let Err(_err) = Self::handle_connection(&mut stream, &config).await {
                             #[cfg(feature = "tracing")]

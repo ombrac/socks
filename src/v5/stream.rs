@@ -5,7 +5,11 @@ use bytes::BytesMut;
 use crate::io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use crate::v5::{Request, Response, method::Method};
 
-pub struct Stream<T>(T, SocketAddr);
+pub struct Stream<T> {
+    inner: T,
+    peer_addr: SocketAddr,
+    local_addr: SocketAddr,
+}
 
 impl<T> Stream<T> {
     #[inline]
@@ -15,12 +19,21 @@ impl<T> Stream<T> {
 
     #[inline]
     pub fn peer_addr(&self) -> SocketAddr {
-        self.1
+        self.peer_addr
     }
 
     #[inline]
-    pub fn with(inner: T, addr: SocketAddr) -> Self {
-        Self(inner, addr)
+    pub fn local_addr(&self) -> SocketAddr {
+        self.local_addr
+    }
+
+    #[inline]
+    pub fn with(inner: T, peer_addr: SocketAddr, local_addr: SocketAddr) -> Self {
+        Self {
+            inner,
+            peer_addr,
+            local_addr,
+        }
     }
 }
 
@@ -41,16 +54,16 @@ where
     #[inline]
     pub async fn read_methods(&mut self) -> io::Result<Vec<Method>> {
         let mut buffer = [0u8; 2];
-        self.0.read_exact(&mut buffer).await?;
+        self.read_exact(&mut buffer).await?;
 
         let method_num = buffer[1];
         if method_num == 1 {
-            let method = self.0.read_u8().await?;
+            let method = self.read_u8().await?;
             return Ok(vec![Method::from_u8(method)]);
         }
 
         let mut methods = vec![0u8; method_num as usize];
-        self.0.read_exact(&mut methods).await?;
+        self.read_exact(&mut methods).await?;
 
         let result = methods.into_iter().map(Method::from_u8).collect();
 
@@ -68,7 +81,7 @@ where
     #[inline]
     pub async fn write_auth_method(&mut self, method: Method) -> io::Result<usize> {
         let bytes = [self.version(), method.as_u8()];
-        self.0.write(&bytes).await
+        self.write(&bytes).await
     }
 
     ///
@@ -82,8 +95,8 @@ where
     ///
     #[inline]
     pub async fn read_request(&mut self) -> io::Result<Request> {
-        let _version = self.0.read_u8().await?;
-        Request::from_async_read(&mut self.0).await
+        let _version = self.read_u8().await?;
+        Request::from_async_read(self).await
     }
 
     ///
@@ -98,7 +111,7 @@ where
     #[inline]
     pub async fn write_response<'a>(&mut self, resp: &Response<'a>) -> io::Result<usize> {
         let bytes = prepend_u8(resp.to_bytes(), self.version());
-        self.0.write(&bytes).await
+        self.write(&bytes).await
     }
 
     #[inline]
@@ -130,51 +143,38 @@ fn prepend_u8(mut bytes: BytesMut, value: u8) -> BytesMut {
 }
 
 mod async_impl {
+    use super::Stream;
+
     use std::io;
     use std::pin::Pin;
     use std::task::{Context, Poll};
+    use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-    use tokio::io::{AsyncRead, AsyncWrite};
-
-    use super::Stream;
-
-    impl<T> AsyncRead for Stream<T>
-    where
-        T: AsyncRead + AsyncWrite + Unpin,
-    {
+    impl<T: AsyncRead + Unpin> AsyncRead for Stream<T> {
         fn poll_read(
             mut self: Pin<&mut Self>,
             cx: &mut Context<'_>,
-            buf: &mut tokio::io::ReadBuf<'_>,
+            buf: &mut ReadBuf<'_>,
         ) -> Poll<io::Result<()>> {
-            AsyncRead::poll_read(Pin::new(&mut self.0), cx, buf)
+            Pin::new(&mut self.inner).poll_read(cx, buf)
         }
     }
 
-    impl<T> AsyncWrite for Stream<T>
-    where
-        T: AsyncRead + AsyncWrite + Unpin,
-    {
+    impl<T: AsyncWrite + Unpin> AsyncWrite for Stream<T> {
         fn poll_write(
             mut self: Pin<&mut Self>,
             cx: &mut Context<'_>,
             buf: &[u8],
-        ) -> Poll<Result<usize, io::Error>> {
-            AsyncWrite::poll_write(Pin::new(&mut self.0), cx, buf)
+        ) -> Poll<io::Result<usize>> {
+            Pin::new(&mut self.inner).poll_write(cx, buf)
         }
 
-        fn poll_flush(
-            mut self: Pin<&mut Self>,
-            cx: &mut Context<'_>,
-        ) -> Poll<Result<(), io::Error>> {
-            AsyncWrite::poll_flush(Pin::new(&mut self.0), cx)
+        fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Pin::new(&mut self.inner).poll_flush(cx)
         }
 
-        fn poll_shutdown(
-            mut self: Pin<&mut Self>,
-            cx: &mut Context<'_>,
-        ) -> Poll<Result<(), io::Error>> {
-            AsyncWrite::poll_shutdown(Pin::new(&mut self.0), cx)
+        fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Pin::new(&mut self.inner).poll_shutdown(cx)
         }
     }
 }
